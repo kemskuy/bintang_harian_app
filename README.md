@@ -1,4 +1,8 @@
-\# Bintang Harian App 🚀 (Versi 1.0)
+\# Bintang Harian App 🚀 (Versi 1.1)
+## Log Perubahan (Changelog) V1.1.0
+- Penambahan fitur real-time sync antara Ortu dan Anak via parentId.
+- Implementasi menu persetujuan klaim Toko Hadiah secara atomik.
+- Penambahan visualisasi ringkasan tugas dan grafik progres harian di Dashboard Anak.
 
 
 
