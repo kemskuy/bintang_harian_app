@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart'; // <-- Diperlukan untuk instance sekunder
 import '../data/database_service.dart';
 import 'kelola_hadiah_page.dart';
 import 'laporan_anak_page.dart';
@@ -17,6 +18,158 @@ class _DashboardOrtuPageState extends State<DashboardOrtuPage> {
   final _namaController = TextEditingController();
   final _poinController = TextEditingController();
   final bool _isSaving = false;
+
+  // Controller baru khusus untuk form pendaftaran akun anak
+  final _namaAnakController = TextEditingController();
+  final _emailAnakController = TextEditingController();
+  final _passwordAnakController = TextEditingController();
+  bool _isRegisteringAnak = false; 
+
+  // =========================================================================
+  // FUNGSI SAKTI: DAFTAR ANAK TANPA LOGOUT AKUN ORTU (INSTANCE SEKUNDER)
+  // =========================================================================
+  Future<void> _eksekusiDaftarAkunAnak({
+    required String namaAnak,
+    required String emailAnak,
+    required String passwordAnak,
+    required String parentId,
+  }) async {
+    String nameInstance = "RegisterAnakInstance";
+    FirebaseApp appSekunder;
+    
+    try {
+      appSekunder = Firebase.app(nameInstance);
+    } catch (_) {
+      appSekunder = await Firebase.initializeApp(
+        name: nameInstance,
+        options: Firebase.app().options,
+      );
+    }
+
+    FirebaseAuth authSekunder = FirebaseAuth.instanceFor(app: appSekunder);
+
+    try {
+      UserCredential result = await authSekunder.createUserWithEmailAndPassword(
+        email: emailAnak.trim(),
+        password: passwordAnak.trim(),
+      );
+
+      String? uidAnakBaru = result.user?.uid;
+
+      if (uidAnakBaru != null) {
+        // Tanam data ke Firestore dengan melampirkan parentId secara otomatis
+        await FirebaseFirestore.instance.collection('users').doc(uidAnakBaru).set({
+          'uid': uidAnakBaru,
+          'nama': namaAnak.trim(),
+          'peran': 'Anak',
+          'totalPoin': 0,
+          'parentId': parentId, 
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await authSekunder.signOut();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // =========================================================================
+  // DIALOG FORM PENDAFTARAN AKUN ANAK (METODE B)
+  // =========================================================================
+  void _tambahAnakDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, 
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Daftarkan Akun Anak 👶✨'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: _namaAnakController,
+                      decoration: const InputDecoration(labelText: 'Nama Panggilan Anak'),
+                    ),
+                    TextField(
+                      controller: _emailAnakController,
+                      decoration: const InputDecoration(labelText: 'Email Login Anak', hintText: 'ex: anakbudi@gmail.com'),
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    TextField(
+                      controller: _passwordAnakController,
+                      decoration: const InputDecoration(labelText: 'Password Akun Anak'),
+                      obscureText: true,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: _isRegisteringAnak ? null : () {
+                    _namaAnakController.clear();
+                    _emailAnakController.clear();
+                    _passwordAnakController.clear();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, foregroundColor: Colors.white),
+                  onPressed: _isRegisteringAnak ? null : () async {
+                    if (_namaAnakController.text.isEmpty || 
+                        _emailAnakController.text.isEmpty || 
+                        _passwordAnakController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Semua kolom wajib diisi ya gaes!')),
+                      );
+                      return;
+                    }
+
+                    setDialogState(() { _isRegisteringAnak = true; });
+
+                    try {
+                      final String uidOrtuAktif = _databaseService.currentUid ?? '';
+                      
+                      await _eksekusiDaftarAkunAnak(
+                        namaAnak: _namaAnakController.text,
+                        emailAnak: _emailAnakController.text,
+                        passwordAnak: _passwordAnakController.text,
+                        parentId: uidOrtuAktif,
+                      );
+
+                      _namaAnakController.clear();
+                      _emailAnakController.clear();
+                      _passwordAnakController.clear();
+
+                      if (!context.mounted) return;
+                      Navigator.pop(context); 
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(backgroundColor: Colors.green, content: Text('Akun Anak berhasil dibuat! Silakan login di HP anak 🥳')),
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(backgroundColor: Colors.redAccent, content: Text('Gagal: $e')),
+                      );
+                    } finally {
+                      setDialogState(() { _isRegisteringAnak = false; });
+                    }
+                  },
+                  child: _isRegisteringAnak 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Daftarkan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   void _tambahTugasDialog() {
     showDialog(
@@ -116,7 +269,7 @@ class _DashboardOrtuPageState extends State<DashboardOrtuPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Keluarga Hebat', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          Text('Status: 1 Anak Terhubung', style: TextStyle(color: Colors.black54)),
+                          Text('Status: Akun Terhubung Aktif', style: TextStyle(color: Colors.black54)),
                         ],
                       ),
                     ),
@@ -135,6 +288,7 @@ class _DashboardOrtuPageState extends State<DashboardOrtuPage> {
               crossAxisSpacing: 12,
               children: [
                 _buildMenuCard(context, Icons.add_task, 'Buat Tugas', Colors.blue, _tambahTugasDialog),
+                _buildMenuCard(context, Icons.person_add, 'Tambah Akun Anak', Colors.pink, _tambahAnakDialog), // <-- TOMBOL MENU BARU GAES ✨
                 _buildMenuCard(context, Icons.verified, 'Verifikasi Tugas', Colors.green, () {
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const VerifikasiTugasPage()));
                 }),

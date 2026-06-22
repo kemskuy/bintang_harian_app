@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <-- 1. KITA TAMBAHKAN IMPORT INI DI SINI BRAY!
 import '../data/database_service.dart';
-import 'reward_store_page.dart'; 
+import 'reward_store_page.dart';
 
 class DashboardAnakPage extends StatefulWidget {
   const DashboardAnakPage({super.key});
@@ -26,9 +27,15 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
           IconButton(
             icon: const Icon(Icons.exit_to_app),
             onPressed: () async {
+              // 1. Ambil instance navigator duluan sebelum context-nya hangus
+              final navigator = Navigator.of(context);
+
+              // 2. Tendang user ke halaman login secara instan agar UI tidak freeze bray
+              navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+
+              // 3. Setelah UI aman di halaman login, baru putus sesi auth di background
+              await FirebaseAuth.instance.signOut();
               await FirebaseFirestore.instance.clearPersistence();
-              if (!context.mounted) return;
-              Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
             },
           ),
         ],
@@ -45,19 +52,27 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
           final int totalPoin = userData?['totalPoin'] ?? 0;
 
           return StreamBuilder<QuerySnapshot>(
-            stream: _databaseService.dapatkanStreamTugasBerdasarParent(parentId),
+            stream: _databaseService.dapatkanStreamTugasBerdasarParent(
+              parentId,
+            ),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
               final dokumenTugas = snapshot.data?.docs ?? [];
-              
+
               int totalTugas = dokumenTugas.length;
-              int tugasSelesai = dokumenTugas.where((doc) => (doc.data() as Map<String, dynamic>)['status'] == 'Selesai').length;
-              
-              double persentaseSelesai = totalTugas > 0 
-                  ? (tugasSelesai / totalTugas) * 100 
+              int tugasSelesai = dokumenTugas
+                  .where(
+                    (doc) =>
+                        (doc.data() as Map<String, dynamic>)['status'] ==
+                        'Selesai',
+                  )
+                  .length;
+
+              double persentaseSelesai = totalTugas > 0
+                  ? (tugasSelesai / totalTugas) * 100
                   : 0.0;
 
               List<QueryDocumentSnapshot> sortedTugas = List.from(dokumenTugas);
@@ -92,19 +107,35 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
                                 const CircleAvatar(
                                   backgroundColor: Colors.amber,
                                   radius: 16,
-                                  child: Icon(Icons.stars, color: Colors.white, size: 18),
+                                  child: Icon(
+                                    Icons.stars,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      const Text('Poin Kamu', style: TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.bold)),
+                                      const Text(
+                                        'Poin Kamu',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.black54,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                       const SizedBox(height: 2),
                                       Text(
                                         '$totalPoin',
-                                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo),
+                                        style: const TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.indigo,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -118,9 +149,21 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
                           flex: 6,
                           child: Row(
                             children: [
-                              Expanded(child: _buildMiniStatCard('Total Tugas', '$totalTugas', Colors.blue)),
+                              Expanded(
+                                child: _buildMiniStatCard(
+                                  'Total Tugas',
+                                  '$totalTugas',
+                                  Colors.blue,
+                                ),
+                              ),
                               const SizedBox(width: 6),
-                              Expanded(child: _buildMiniStatCard('Progres', '${persentaseSelesai.toStringAsFixed(0)}%', Colors.green)),
+                              Expanded(
+                                child: _buildMiniStatCard(
+                                  'Progres',
+                                  '${persentaseSelesai.toStringAsFixed(0)}%',
+                                  Colors.green,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -130,18 +173,29 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Tugas Hari Ini 📝', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Tugas Hari Ini 📝',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         TextButton.icon(
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.amber.shade900,
                             backgroundColor: Colors.amber.shade100,
                           ),
                           icon: const Icon(Icons.store, size: 18),
-                          label: const Text('Toko Hadiah 🎁', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text(
+                            'Toko Hadiah 🎁',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const RewardStorePage()),
+                              MaterialPageRoute(
+                                builder: (context) => const RewardStorePage(),
+                              ),
                             );
                           },
                         ),
@@ -152,7 +206,10 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
                         ? const Center(
                             child: Padding(
                               padding: EdgeInsets.all(32.0),
-                              child: Text('Belum ada tugas hari ini. ✨', style: TextStyle(color: Colors.black45)),
+                              child: Text(
+                                'Belum ada tugas hari ini. ✨',
+                                style: TextStyle(color: Colors.black45),
+                              ),
                             ),
                           )
                         : ListView.builder(
@@ -160,9 +217,9 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: sortedTugas.length,
                             itemBuilder: (context, index) {
-                              final doc = sortedTugas[index]; 
+                              final doc = sortedTugas[index];
                               final data = doc.data() as Map<String, dynamic>;
-                              
+
                               final taskId = data['taskId'] ?? '';
                               final namaTugas = data['namaTugas'] ?? '';
                               final kategori = data['kategori'] ?? 'Rutinitas';
@@ -173,19 +230,33 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
                                 margin: const EdgeInsets.symmetric(vertical: 6),
                                 child: ListTile(
                                   leading: CircleAvatar(
-                                    backgroundColor: status == 'Selesai' 
-                                        ? Colors.green 
-                                        : (status == 'Menunggu Verifikasi' ? Colors.orange : Colors.amber),
-                                    child: const Icon(Icons.star, color: Colors.white),
+                                    backgroundColor: status == 'Selesai'
+                                        ? Colors.green
+                                        : (status == 'Menunggu Verifikasi'
+                                              ? Colors.orange
+                                              : Colors.amber),
+                                    child: const Icon(
+                                      Icons.star,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                  title: Text(namaTugas, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text('$kategori • $poin Poin Bintang ⭐'),
+                                  title: Text(
+                                    namaTugas,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    '$kategori • $poin Poin Bintang ⭐',
+                                  ),
                                   trailing: status == 'Aktif'
                                       ? ElevatedButton(
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: Colors.indigo,
                                             foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                            ),
                                           ),
                                           onPressed: () async {
                                             try {
@@ -193,34 +264,56 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
                                                   .collection('tasks')
                                                   .doc(taskId)
                                                   .update({
-                                                'status': 'Menunggu Verifikasi',
-                                                'submittedBy': currentAnakUid, 
-                                                'submittedAt': FieldValue.serverTimestamp(),
-                                              });
+                                                    'status':
+                                                        'Menunggu Verifikasi',
+                                                    'submittedBy':
+                                                        currentAnakUid,
+                                                    'submittedAt':
+                                                        FieldValue.serverTimestamp(),
+                                                  });
 
                                               if (!context.mounted) return;
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('Tugas "$namaTugas" dikirim ke Orang Tua! ⏳')),
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Tugas "$namaTugas" dikirim ke Orang Tua! ⏳',
+                                                  ),
+                                                ),
                                               );
                                             } catch (e) {
                                               if (!context.mounted) return;
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('Gagal: $e')),
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Gagal: $e'),
+                                                ),
                                               );
                                             }
                                           },
                                           child: const Text('Selesai'),
                                         )
                                       : Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
                                           decoration: BoxDecoration(
-                                            color: status == 'Selesai' ? Colors.green.shade100 : Colors.orange.shade100,
-                                            borderRadius: BorderRadius.circular(12),
+                                            color: status == 'Selesai'
+                                                ? Colors.green.shade100
+                                                : Colors.orange.shade100,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
                                           child: Text(
                                             status,
                                             style: TextStyle(
-                                              color: status == 'Selesai' ? Colors.green.shade800 : Colors.orange.shade800,
+                                              color: status == 'Selesai'
+                                                  ? Colors.green.shade800
+                                                  : Colors.orange.shade800,
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -253,9 +346,23 @@ class _DashboardAnakPageState extends State<DashboardAnakPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.black54,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
         ],
       ),
     );

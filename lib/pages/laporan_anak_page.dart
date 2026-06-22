@@ -18,8 +18,12 @@ class LaporanAnakPage extends StatelessWidget {
       ),
       // MENGGUNAKAN MULTI-STREAM / GABUNGAN DATA SECARA REAL-TIME
       body: StreamBuilder<QuerySnapshot>(
-        stream: databaseService.dapatkanStreamTugas(), // Ambil seluruh data tugas
-        builder: (context, tugasSnapshot) {
+  // Kita kunci aliran data tugas hanya yang cocok dengan parentId Ortu aktif!
+  stream: FirebaseFirestore.instance
+      .collection('tasks')
+      .where('parentId', isEqualTo: currentParentUid)
+      .snapshots(),
+  builder: (context, tugasSnapshot) {
           if (tugasSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }

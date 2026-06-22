@@ -107,8 +107,12 @@ class _KelolaHadiahPageState extends State<KelolaHadiahPage> {
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _databaseService.dapatkanStreamHadiah(),
-        builder: (context, snapshot) {
+  // Kita bypass fungsinya dengan query yang langsung mengunci parentId Ortu aktif!
+  stream: FirebaseFirestore.instance
+      .collection('rewards')
+      .where('parentId', isEqualTo: _databaseService.currentUid)
+      .snapshots(),
+  builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
