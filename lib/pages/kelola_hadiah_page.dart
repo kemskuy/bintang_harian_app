@@ -13,7 +13,7 @@ class _KelolaHadiahPageState extends State<KelolaHadiahPage> {
   final _databaseService = DatabaseService();
   final _namaHadiahController = TextEditingController();
   final _hargaPoinController = TextEditingController();
-  bool _isSaving = false;
+  final bool _isSaving = false;
 
   void _tambahHadiahDialog() {
     showDialog(
@@ -49,37 +49,48 @@ class _KelolaHadiahPageState extends State<KelolaHadiahPage> {
               backgroundColor: Colors.indigo,
               foregroundColor: Colors.white,
             ),
-            onPressed: _isSaving ? null : () async {
-              if (_namaHadiahController.text.isNotEmpty &&
-                  _hargaPoinController.text.isNotEmpty) {
-                
-                Navigator.pop(context); // Tutup dialog duluan
-                
-                try {
-                  await _databaseService.tambahHadiahBaru(
-                    nama: _namaHadiahController.text,
-                    hargaPoin: int.parse(_hargaPoinController.text),
-                  );
+            onPressed: _isSaving
+                ? null
+                : () async {
+                    if (_namaHadiahController.text.isNotEmpty &&
+                        _hargaPoinController.text.isNotEmpty) {
+                      Navigator.pop(context); // Tutup dialog duluan
 
-                  _namaHadiahController.clear();
-                  _hargaPoinController.clear();
+                      try {
+                        // Ambil UID Orang Tua aktif terlebih dahulu
+                        final String uidOrangTua =
+                            _databaseService.currentUid ?? '';
 
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Hadiah baru berhasil ditambahkan ke Store! 🎉'),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Gagal menambahkan hadiah: $e')),
-                    );
-                  }
-                }
-              }
-            },
+                        // Masukkan ke dalam parameter fungsi (Sudah disesuaikan nama controllernya)
+                        await _databaseService.tambahHadiahBaru(
+                          nama: _namaHadiahController.text, // <-- Gunakan nama asli ini gaes
+                          hargaPoin: int.parse(_hargaPoinController.text), // <-- Gunakan harga asli ini gaes
+                          parentId: uidOrangTua,
+                        );
+
+                        _namaHadiahController.clear();
+                        _hargaPoinController.clear();
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Hadiah baru berhasil ditambahkan ke Store! 🎉',
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Gagal menambahkan hadiah: $e'),
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
             child: const Text('Simpan'),
           ),
         ],
@@ -151,16 +162,15 @@ class _KelolaHadiahPageState extends State<KelolaHadiahPage> {
                           ),
                         ),
                       IconButton(
-                        icon: const Icon(
-                          Icons.delete,
-                          color: Colors.redAccent,
-                        ),
+                        icon: const Icon(Icons.delete, color: Colors.redAccent),
                         onPressed: () async {
                           try {
                             await _databaseService.hapusHadiah(rewardId);
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Hadiah berhasil dihapus.')),
+                                const SnackBar(
+                                  content: Text('Hadiah berhasil dihapus.'),
+                                ),
                               );
                             }
                           } catch (e) {

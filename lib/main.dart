@@ -1,3 +1,5 @@
+import 'package:bintang_harian_app/pages/dashboard_ortu_page.dart';
+import 'package:bintang_harian_app/pages/dashboard_anak_page.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; 
@@ -6,12 +8,8 @@ import 'firebase_options.dart';
 import 'data/database_service.dart'; // <-- TAMBAHKAN INI (Sesuaikan folder path Anda jika berbeda)
 
 import 'pages/login_page.dart';
-import 'pages/pilih_peran_page.dart';
-import 'pages/dashboard_ortu_page.dart'; 
-import 'pages/dashboard_anak_page.dart'; 
-import 'pages/reward_store_page.dart';
-import 'pages/kelola_hadiah_page.dart'; 
-import 'pages/laporan_anak_page.dart'; 
+import 'pages/pilih_peran_page.dart';  
+import 'pages/reward_store_page.dart';  
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); 
@@ -40,8 +38,8 @@ class BintangHarianApp extends StatelessWidget {
         '/': (context) => const SplashScreen(),
         '/login': (context) => const LoginPage(),
         '/pilih-peran': (context) => const PilihPeranPage(),
-        '/dashboard-ortu': (context) => const DashboardOrtuPage(), 
-        '/dashboard-anak': (context) => const DashboardAnakPage(), 
+        '/dashboard-ortu': (context) => DashboardOrtuPage(), 
+        '/dashboard-anak': (context) => DashboardAnakPage(), 
         '/reward-store': (context) => const RewardStorePage(),
       },
     );

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../data/data_hadiah.dart';
-import '../data/data_tugas.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../data/database_service.dart';
 
 class RewardStorePage extends StatefulWidget {
   const RewardStorePage({super.key});
@@ -10,19 +10,11 @@ class RewardStorePage extends StatefulWidget {
 }
 
 class _RewardStorePageState extends State<RewardStorePage> {
+  final _databaseService = DatabaseService();
+
   @override
   Widget build(BuildContext context) {
-    // 1. Hitung total poin murni dari tugas yang sudah diverifikasi ortu
-    int totalPoinMurni = DataTugas.daftarTugas
-        .where((t) => t.selesai && t.diverifikasi)
-        .fold(0, (sum, item) => sum + item.poin);
-
-    // 2. Kurangi dengan total poin hadiah yang sudah ditukarkan anak
-    int totalPoinDiterka = DataHadiah.katalogHadiah
-        .where((h) => h.sudahDitebus)
-        .fold(0, (sum, item) => sum + item.hargaPoin);
-
-    int sisaPoinAnak = totalPoinMurni - totalPoinDiterka;
+    final String currentAnakUid = _databaseService.currentUid ?? '';
 
     return Scaffold(
       appBar: AppBar(
@@ -30,77 +22,140 @@ class _RewardStorePageState extends State<RewardStorePage> {
         backgroundColor: Colors.amber.shade700,
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          // Banner Sisa Poin Anda
-          Container(
-            width: double.infinity,
-            color: Colors.amber.shade100,
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.stars, color: Colors.amber, size: 30),
-                const SizedBox(width: 10),
-                Text(
-                  'Sisa Bintangmu: $sisaPoinAnak Poin',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.amber.shade900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: DataHadiah.katalogHadiah.length,
-              itemBuilder: (context, index) {
-                final hadiah = DataHadiah.katalogHadiah[index];
-                return Card(
-                  child: ListTile(
-                    title: Text(
-                      hadiah.nama,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+      // STREAM 1: Ambil saldo 'totalPoin' asli anak secara real-time
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentAnakUid)
+            .snapshots(),
+        builder: (context, userSnapshot) {
+          if (userSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+          int totalPoinAnak = userData?['totalPoin'] ?? 0;
+          String parentId = userData?['parentId'] ?? '';
+
+          return Column(
+            children: [
+              // Banner Sisa Poin Anda (Mengambil dari saldo totalPoin Firestore)
+              Container(
+                width: double.infinity,
+                color: Colors.amber.shade100,
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.stars, color: Colors.amber, size: 30),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Sisa Bintangmu: $totalPoinAnak Poin',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber.shade900,
+                      ),
                     ),
-                    subtitle: Text('${hadiah.hargaPoin} Bintang ⭐'),
-                    trailing: hadiah.sudahDitebus
-                        ? const Text(
-                            'Sudah Ditukar ✔️',
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
+                  ],
+                ),
+              ),
+              
+              // STREAM 2: Ambil katalog hadiah yang dibuat oleh Ortu (berdasar parentId)
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _databaseService.dapatkanStreamHadiahBerdasarParent(parentId),
+                  builder: (context, rewardSnapshot) {
+                    if (rewardSnapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (!rewardSnapshot.hasData || rewardSnapshot.data!.docs.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0),
+                          child: Text('Belum ada hadiah tersedia dari Orang Tua. 🛒'),
+                        ),
+                      );
+                    }
+
+                    final listHadiah = rewardSnapshot.data!.docs;
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: listHadiah.length,
+                      itemBuilder: (context, index) {
+                        final doc = listHadiah[index];
+                        final hadiah = doc.data() as Map<String, dynamic>;
+
+                        final rewardId = hadiah['rewardId'] ?? '';
+                        final nama = hadiah['nama'] ?? '';
+                        final hargaPoin = hadiah['hargaPoin'] ?? 0;
+                        final status = hadiah['status'] ?? 'Tersedia';
+
+                        bool sudahDitukar = status == 'Menunggu Persetujuan' || status == 'Selesai Diklaim';
+
+                        return Card(
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.orangeAccent,
+                              child: Icon(Icons.card_giftcard, color: Colors.white),
                             ),
-                          )
-                        : ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.amber.shade600,
-                              foregroundColor: Colors.white,
+                            title: Text(
+                              nama,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            onPressed: sisaPoinAnak >= hadiah.hargaPoin
-                                ? () {
-                                    setState(() {
-                                      hadiah.sudahDitebus = true;
-                                    });
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Hore! Sukses menukar ${hadiah.nama}! Laporkan ke Ortu ya! 🎉',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                : null, // Tombol mati otomatis jika poin tidak cukup
-                            child: const Text('Tukar'),
+                            subtitle: Text('$hargaPoin Bintang ⭐'),
+                            trailing: sudahDitukar
+                                ? Text(
+                                    status == 'Menunggu Persetujuan' ? 'Menunggu Ortu ⏳' : 'Sudah Ditukar ✔️',
+                                    style: TextStyle(
+                                      color: status == 'Menunggu Persetujuan' ? Colors.orange : Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )
+                                : ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.amber.shade600,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    // Tombol aktif hanya jika poin anak cukup
+                                    onPressed: totalPoinAnak >= hargaPoin
+                                        ? () async {
+                                            try {
+                                              // Jalankan fungsi transaksi potong poin otomatis
+                                              await _databaseService.tukarHadiah(
+                                                rewardId: rewardId,
+                                                hargaPoin: hargaPoin,
+                                                anakUid: currentAnakUid,
+                                              );
+
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(content: Text('Hore! Sukses menukar $nama! Tunggu persetujuan Ortu ya! 🎉')),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(content: Text('Gagal menukar: $e')),
+                                                );
+                                              }
+                                            }
+                                          }
+                                        : null, // Otomatis disable jika poin kurang
+                                    child: const Text('Tukar'),
+                                  ),
                           ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

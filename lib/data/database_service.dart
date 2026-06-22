@@ -8,7 +8,24 @@ class DatabaseService {
   // Mengambil UID user yang sedang login
   String? get currentUid => _auth.currentUser?.uid;
 
-  // 1. Fungsi untuk menyimpan atau memperbarui Peran User di Firestore
+  // Stream data profil user aktif
+  Stream<DocumentSnapshot> dapatkanDataUserAktif() {
+    return _db.collection('users').doc(currentUid ?? '').snapshots();
+  }
+
+  // Stream tugas berdasarkan parentId (Tanpa .orderBy agar tidak error index)
+  Stream<QuerySnapshot> dapatkanStreamTugasBerdasarParent(String parentId) {
+    return _db.collection('tasks')
+        .where('parentId', isEqualTo: parentId)
+        .snapshots();
+  }
+
+  // >>> TAMBAHKAN BARIS INI GAES KHUSUS UNTUK HALAMAN LAPORAN <<<
+  Stream<QuerySnapshot> dapatkanStreamTugas() {
+    return _db.collection('tasks').snapshots();
+  }
+
+  // Simpan atau perbarui peran
   Future<void> simpanPeranUser(String peran) async {
     if (currentUid != null) {
       await _db.collection('users').doc(currentUid).set({
@@ -19,7 +36,7 @@ class DatabaseService {
     }
   }
 
-  // 2. Fungsi untuk mengambil data peran user saat ini
+  // Ambil peran user
   Future<String?> ambilPeranUser() async {
     if (currentUid != null) {
       DocumentSnapshot doc = await _db.collection('users').doc(currentUid).get();
@@ -31,17 +48,17 @@ class DatabaseService {
     return null;
   }
 
-  // 3. Fungsi untuk menyimpan tugas baru dari Orang Tua ke Firestore
+  // Tambah tugas baru dari Orang Tua
   Future<void> tambahTugasBaru({
     required String namaTugas,
     required String deskripsi,
     required String kategori,
     required int poin,
     required bool wajibFoto,
+    required String parentId,
   }) async {
     if (currentUid != null) {
       DocumentReference taskDoc = _db.collection('tasks').doc();
-
       await taskDoc.set({
         'taskId': taskDoc.id,
         'createdBy': currentUid,       
@@ -51,22 +68,21 @@ class DatabaseService {
         'poin': poin,
         'wajibFoto': wajibFoto,
         'status': 'Aktif',             
+        'parentId': parentId,
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
   }
 
-  // 4. Stream untuk menarik data tugas secara real-time
-  Stream<QuerySnapshot> dapatkanStreamTugas() {
-    return _db.collection('tasks')
-        .orderBy('createdAt', descending: true)
-        .snapshots();
-  }
+  // =========================================================================
+  // KELOMPOK FITUR HADIAH V1.1 (TERKONEKSI ANTAR AKUN)
+  // =========================================================================
 
-  // 5. Fungsi untuk menyimpan hadiah baru ke Firestore
+  // A. Tambah hadiah baru dengan menyertakan parentId keluarga
   Future<void> tambahHadiahBaru({
-    required String nama,
+    required String nama, 
     required int hargaPoin,
+    required String parentId, 
   }) async {
     if (currentUid != null) {
       DocumentReference rewardDoc = _db.collection('rewards').doc();
@@ -75,60 +91,91 @@ class DatabaseService {
         'createdBy': currentUid,
         'nama': nama,
         'hargaPoin': hargaPoin,
-        'sudahDitebus': false,
+        'status': 'Tersedia', 
+        'parentId': parentId, 
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
   }
 
-  // 6. Stream untuk memantau katalog hadiah secara real-time
-  Stream<QuerySnapshot> dapatkanStreamHadiah() {
+  // B. Stream untuk menarik katalog hadiah khusus keluarga tersebut
+  Stream<QuerySnapshot> dapatkanStreamHadiahBerdasarParent(String parentId) {
     return _db.collection('rewards')
-        .orderBy('createdAt', descending: true)
+        .where('parentId', isEqualTo: parentId)
         .snapshots();
   }
 
-  // 7. Fungsi untuk menghapus hadiah dari Firestore
+  // C. Fungsi Potong Poin otomatis saat Anak menukarkan Hadiah
+  Future<void> tukarHadiah({
+    required String rewardId, 
+    required int hargaPoin, 
+    required String anakUid,
+  }) async {
+    final rewardRef = _db.collection('rewards').doc(rewardId);
+    final userRef = _db.collection('users').doc(anakUid);
+
+    await _db.runTransaction((transaction) async {
+      DocumentSnapshot userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) throw Exception("User anak tidak ditemukan!");
+      
+      int totalPoinAnak = (userSnapshot.data() as Map<String, dynamic>)['totalPoin'] ?? 0;
+
+      if (totalPoinAnak < hargaPoin) {
+        throw Exception("Poin kamu tidak cukup untuk menukar hadiah ini! 😢");
+      }
+
+      transaction.update(userRef, {
+        'totalPoin': FieldValue.increment(-hargaPoin),
+      });
+
+      transaction.update(rewardRef, {
+        'status': 'Menunggu Persetujuan',
+        'claimedBy': anakUid,
+        'claimedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  // Fungsi penyeimbang agar halaman lama tidak error
+  Stream<QuerySnapshot> dapatkanStreamHadiah() {
+    return _db.collection('rewards').snapshots();
+  }
+
   Future<void> hapusHadiah(String rewardId) async {
     await _db.collection('rewards').doc(rewardId).delete();
   }
 
-// 8. Stream untuk menarik data tugas yang BUTUH VERIFIKASI (Selesai tapi belum diverifikasi)
   Stream<QuerySnapshot> dapatkanStreamVerifikasiTugas() {
-    return _db.collection('tasks')
-        .where('status', isEqualTo: 'Menunggu Verifikasi')
-        .snapshots();
+    return _db.collection('tasks').where('status', isEqualTo: 'Menunggu Verifikasi').snapshots();
   }
 
-  // 9. Fungsi untuk memverifikasi tugas sekaligus menambahkan poin ke user
-  Future<void> verifikasiTugasAnak(String taskId, int poinTugas) async {
-    // Kita gunakan batch/transaction agar jika salah satu gagal, semua dibatalkan (aman)
+  // VERIFIKASI VERSI DINAMIS V1.1: Menerima anakUid langsung dari data tugas pelapor
+  Future<void> verifikasiTugasAnak(String taskId, int poinTugas, String anakUid) async {
     final taskRef = _db.collection('tasks').doc(taskId);
     
-    // Karena saat ini kita menggunakan satu akun/atau simplifikasi multi-role di dokumen profil yang sama:
-    if (currentUid != null) {
-      final userRef = _db.collection('users').doc(currentUid);
+    // Alamat dokumen user diarahkan otomatis ke UID anak yang mengerjakan
+    final userRef = _db.collection('users').doc(anakUid);
 
-      await _db.runTransaction((transaction) async {
-        // 1. Update status tugas
-        transaction.update(taskRef, {
-          'status': 'Selesai',
-          'verifiedAt': FieldValue.serverTimestamp(),
-        });
+    await _db.runTransaction((transaction) async {
+      // 1. Update status tugas menjadi Selesai
+      transaction.update(taskRef, {
+        'status': 'Selesai',
+        'verifiedAt': FieldValue.serverTimestamp(),
+      });
 
-        // 2. Tambahkan poin ke saldo user
+      // 2. Tambahkan poin langsung ke saldo user Anak jika ID-nya terdeteksi ada
+      if (anakUid.isNotEmpty) {
         transaction.update(userRef, {
           'totalPoin': FieldValue.increment(poinTugas),
         });
-      });
-    }
+      }
+    });
   }
 
-// 10. Fungsi untuk diajukan anak ketika tugas selesai dikerjakan
   Future<void> ajukanSelesaiTugas(String taskId) async {
     await _db.collection('tasks').doc(taskId).update({
       'status': 'Menunggu Verifikasi',
       'submittedAt': FieldValue.serverTimestamp(),
     });
   }
-} // <-- Pastikan tanda kurung ini berada di paling bawah file!
+}
