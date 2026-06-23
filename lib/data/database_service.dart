@@ -48,7 +48,9 @@ class DatabaseService {
     return null;
   }
 
-  // Tambah tugas baru dari Orang Tua
+  // =========================================================================
+  // UPDATE SAKTI: TAMBAH PARAMETER isRutin UNTUK KLASIFIKASI TUGAS BRAY
+  // =========================================================================
   Future<void> tambahTugasBaru({
     required String namaTugas,
     required String deskripsi,
@@ -56,12 +58,13 @@ class DatabaseService {
     required int poin,
     required bool wajibFoto,
     required String parentId,
+    required bool isRutin, // <-- PARAMETER BARU RESMI DITANAM DI SINI BRAY!
   }) async {
     if (currentUid != null) {
       DocumentReference taskDoc = _db.collection('tasks').doc();
       await taskDoc.set({
         'taskId': taskDoc.id,
-        'createdBy': currentUid,       
+        'createdBy': currentUid,      
         'namaTugas': namaTugas,
         'deskripsi': deskripsi,
         'kategori': kategori,
@@ -69,6 +72,8 @@ class DatabaseService {
         'wajibFoto': wajibFoto,
         'status': 'Aktif',             
         'parentId': parentId,
+        'jenis': isRutin ? 'Rutin' : 'Sekunder', // String klasifikasi
+        'isRutin': isRutin,                     // Boolean pendukung filter
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
